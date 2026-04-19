@@ -73,7 +73,7 @@ extern struct Frame_Info* disk_frames_info;		// Virtual address of physical fram
 extern struct Linked_List free_frame_list;	// Free list of physical frames
 extern struct Linked_List modified_frame_list;	// Free list of physical frames
 extern uint32 number_of_frames;
-
+extern uint32 nextFitPtr;
 
 extern uint32 phys_page_directory;
 extern uint32 *ptr_page_directory;
@@ -81,7 +81,6 @@ extern uint8* ptr_zero_page;
 extern uint8* ptr_temp_page;
 extern char* ptr_free_mem;	// Pointer to next byte of free mem
 extern char end_of_kernel[];
-
 void boot_map_range(uint32 *ptr_page_directory, uint32 virtual_address, uint32 size, uint32 physical_address, int perm);
 uint32* boot_get_page_table(uint32 *ptr_page_directory, uint32 virtual_address, int create);
 void* boot_allocate_space(uint32 size, uint32 align);
