@@ -16,6 +16,7 @@ void* kmalloc(unsigned int size)
 		//roundup to the nearest PAGE_SIZE multiple
 		size =  ROUNDUP(size,PAGE_SIZE);
 		uint32 numPages = size / PAGE_SIZE;
+		if(isKHeapPlacementStrategyNEXTFIT()){
 		// Next Fit: search from nextFitPtr for contiguous free pages
 		uint32 start = nextFitPtr;
 		uint32 current = start;
@@ -59,6 +60,62 @@ void* kmalloc(unsigned int size)
 		nextFitPtr = current; // update next fit pointer
 		kheap_size_tracker[(allocStart - KERNEL_HEAP_START) / PAGE_SIZE] = numPages;
 		return (void*)allocStart;
+		}
+		else if(isKHeapPlacementStrategyBESTFIT())
+		{
+		        	uint32 bestStart = 0;
+			        uint32 bestSize = 0xFFFFFFFF;
+			        uint32 current = KERNEL_HEAP_START;
+			        uint32 count = 0;
+			        uint32 blockStart = 0;
+
+			        while(current < KERNEL_HEAP_MAX)
+			        {
+			            struct Frame_Info *ptr_frame_info = NULL;
+			            uint32 *ptr_page_table = NULL;
+			            ptr_frame_info = get_frame_info(ptr_page_directory, (void*)current, &ptr_page_table);
+
+			            if(ptr_frame_info == NULL)
+			            {
+			                if(count == 0) blockStart = current;
+			                count++;
+			            }
+			            else
+			            {
+			                uint32 holeSize = count * PAGE_SIZE;
+			                if(holeSize >= size && holeSize < bestSize)
+			                {
+			                    bestSize = holeSize;
+			                    bestStart = blockStart;
+			                }
+			                count = 0;
+			            }
+			            current += PAGE_SIZE;
+			        }
+			        // check last hole at end of heap
+			        if(count > 0)
+			        {
+			            uint32 holeSize = count * PAGE_SIZE;
+			            if(holeSize >= size && holeSize < bestSize)
+			            {
+			                bestSize = holeSize;
+			                bestStart = blockStart;
+			            }
+			        }
+
+			        if(bestSize == 0xFFFFFFFF) return NULL; // nothing fits
+
+			        for(uint32 va = bestStart; va < bestStart + size; va += PAGE_SIZE)
+			        {
+			            struct Frame_Info *fi = NULL;
+			            allocate_frame(&fi);
+			            map_frame(ptr_page_directory, fi, (void*)va, PERM_PRESENT | PERM_WRITEABLE);
+			        }
+			        kheap_size_tracker[(bestStart - KERNEL_HEAP_START) / PAGE_SIZE] = numPages;
+			        return (void*)bestStart;
+
+		}
+		return NULL;
 }
 void kfree(void* virtual_address)
 {
