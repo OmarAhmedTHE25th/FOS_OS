@@ -90,46 +90,64 @@ struct Env* find_env_in_queue(struct Env_Queue* queue, uint32 envID)
 
 void sched_init_MLFQ(uint8 numOfLevels, uint8 *quantumOfEachLevel)
 {
-	//=========================================
-	//DON'T CHANGE THESE LINES=================
-	sched_delete_ready_queues();
-	scheduler_status = SCH_STOPPED;
-	scheduler_method = SCH_MLFQ;
-	//=========================================
-	//=========================================
-
-	//TODO: [PROJECT 2026 -[6] CPU Scheduling MLFQ] sched_init_MLFQ()
-	// Write your code here, remove the panic and write your code
-	panic("sched_init_MLFQ() is not implemented yet...!!");
+    //=========================================
+    //DON'T CHANGE THESE LINES=================
+    sched_delete_ready_queues();
+    scheduler_status = SCH_STOPPED;
+    scheduler_method = SCH_MLFQ;
+    //=========================================
 
 	//[1] Create the ready queues and initialize them using init_queue()
-	//[2] Create the "quantums" array and initialize it by the given quantums in "quantumOfEachLevel[]"
-	//[3] Set the CPU quantum by the first level one
-}
+    num_of_ready_queues = numOfLevels;
+    env_ready_queues = kmalloc(numOfLevels * sizeof(struct Env_Queue));
+    for (int i = 0; i < numOfLevels; i++)
+    {
+        init_queue(&(env_ready_queues[i]));
+    }
 
+	//[2] Create the "quantums" array and initialize it by the given quantums in "quantumOfEachLevel[]"
+    quantums = kmalloc(numOfLevels * sizeof(uint8));
+    for (int i = 0; i < numOfLevels; i++)
+    {
+        quantums[i] = quantumOfEachLevel[i];
+    }
+
+	//[3] Set the CPU quantum by the first level one
+    kclock_set_quantum(quantums[0]);
+}
 
 struct Env* fos_scheduler_MLFQ()
 {
-	//TODO: [PROJECT 2026 -[7] CPU Scheduling MLFQ] fos_scheduler_MLFQ()
-	// Write your code here, remove the panic and write your code
-	panic("fos_scheduler_MLFQ() is not implemented yet...!!");
+    // Remember which level the current env was picked from last time,so we can demote it by one level on the next call.
+    static int curenv_level = 0;
 
-	//Apply the MLFQ with the specified levels to pick up the next environment
-	//Note: the "curenv" (if exist) should be placed in its correct queue
-
-	//Steps:
-	//======
 	//[1] If the current environment (curenv) exists, place it in the suitable queue
+    if (curenv != NULL)
+    {
+        int newLevel = (curenv_level < num_of_ready_queues - 1)
+                       ? curenv_level + 1
+                       : curenv_level;
+        enqueue(&(env_ready_queues[newLevel]), curenv);
+    }
 
 	//[2] Search for the next env in the queues according to their priorities (first is highest)
+    for (int i = 0; i < num_of_ready_queues; i++)
+    {
+        if (LIST_SIZE(&(env_ready_queues[i])) > 0)
+        {
+    //[3] If next env is found: Set the CPU quantum by the quantum of the selected level,remove the selected env from its queue and return it
+            struct Env* next = dequeue(&(env_ready_queues[i]));
+            kclock_set_quantum(quantums[i]);
+            curenv_level = i;
+            return next;
+        }
+    }
 
-	//[3] If next env is found: Set the CPU quantum by the quantum of the selected level
-	//							,remove the selected env from its queue and return it
-	//	  Else, return NULL
-
-	return NULL;
-
+    //Else, no env found
+    return NULL;
 }
+
+
 
 
 //==================================================================================//
