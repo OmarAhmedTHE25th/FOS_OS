@@ -198,27 +198,53 @@ kheap_size_tracker[index] = 0;
 unsigned int kheap_virtual_address(unsigned int physical_address)
 {
 	//TODO: [PROJECT 2026 - [3] Kernel Heap] kheap_virtual_address()
-	// Write your code here, remove the panic and write your code
-	panic("kheap_virtual_address() is not implemented yet...!!");
+	uint32 offset = physical_address % PAGE_SIZE;
+
+
+	for(int i=0 ; i< NUM_KHEAP_PAGES ; i++){
+
+		if(kheap_size_tracker[i] !=0){
+			uint32 start_va = KERNEL_HEAP_START + i * PAGE_SIZE;
+			uint32 num_pages = kheap_size_tracker [i];
+				for (int j =0; j < num_pages ; j++){
+		uint32 va = start_va + j *PAGE_SIZE;
+		 uint32 *ptr_page_table = NULL;
+
+
+		 struct Frame_Info *frame = get_frame_info(ptr_page_directory, (void*)va ,&ptr_page_table);
+		 if (frame != NULL){
+		 if((to_physical_address(frame)) == (physical_address-offset)) //if physical base= physical base keda tmam
+		 {
+
 
 	//return the virtual address corresponding to given physical_address
 	//refer to the project presentation and documentation for details
 
 	//change this "return" according to your answer
 
-	return 0;
+	return va + offset;
 }
+	}
+}
+		}
+	}
+return 0;}
 
 unsigned int kheap_physical_address(unsigned int virtual_address)
 {
 	//TODO: [PROJECT 2026 - [4] Kernel Heap] kheap_physical_address()
-	// Write your code here, remove the panic and write your code
-	panic("kheap_physical_address() is not implemented yet...!!");
+	uint32 *ptr_page_table = NULL;
+
+	struct Frame_Info *frame = get_frame_info (ptr_page_directory, (void*)virtual_address, &ptr_page_table);
+	if (frame ==NULL)
+		return 0;
+	uint32 offset = virtual_address % PAGE_SIZE;
+	return to_physical_address(frame) + offset;
+	return 0;
 
 	//return the physical address corresponding to given virtual_address
 	//refer to the project presentation and documentation for details
 
 	//change this "return" according to your answer
-	return 0;
 }
 
