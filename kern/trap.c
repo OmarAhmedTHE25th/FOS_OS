@@ -455,13 +455,61 @@ void table_fault_handler(struct Env * curenv, uint32 fault_va)
 }
 
 //Handle the page fault
-void page_fault_handler(struct Env * curenv, uint32 fault_va)
+void page_fault_handler(struct Env *curenv, uint32 fault_va)
 {
-	//TODO: [PROJECT 2026 -[5] Fault handler] page_fault_handler()
-	// Write your code here, remove the panic and write your code
-	panic("page_fault_handler() is not implemented yet...!!");
-
-
-
-
+    uint32 va = ROUNDDOWN(fault_va, PAGE_SIZE);
+    uint32 ws_max = curenv->page_WS_max_size;
+    
+    // Protection fault check
+    if ((pt_get_page_permissions(curenv, va) & PERM_PRESENT) == PERM_PRESENT)
+    {
+        panic("page_fault_handler: protection fault at va %08x in env %s", 
+              va, curenv->prog_name);
+    }
+    
+    uint32 ws_size = env_page_ws_get_size(curenv);
+    uint32 target_idx = 0;
+    
+    if (ws_size < ws_max)
+    {
+        uint32 found = 0;
+        for (uint32 i = 0; i < ws_max; i++)
+        {
+            uint32 idx = (curenv->page_WS_last_index + i) % ws_max;
+            if (env_page_ws_is_entry_empty(curenv, idx))
+            {
+                target_idx = idx;
+                found = 1;
+                break;
+            }
+        }
+        if (!found)
+            panic("page_fault_handler: WS has space but no empty entry");
+    }
+    else
+    {
+        // TODO: Implement Nth chance CLOCK algorithm to find victim
+		panic("page_fault_handler: WS is full, replacement algorithm not implemented yet");
+	}
+    
+    struct Frame_Info *new_frame = NULL;
+    if (allocate_frame(&new_frame) == E_NO_MEM)
+        panic("page_fault_handler: no free frames (env %08x, va %08x)",
+              curenv->env_id, va);
+    
+    map_frame(curenv->env_page_directory, new_frame,
+              (void *)va,
+              PERM_PRESENT | PERM_USER | PERM_WRITEABLE);
+    
+    int read_ret = pf_read_env_page(curenv, (void *)va);
+    if (read_ret == E_PAGE_NOT_EXIST_IN_PF)
+    {
+        if (va >= USTACKBOTTOM && va < USTACKTOP)
+            pf_add_empty_env_page(curenv, va, 1);
+        else
+            panic("page_fault_handler: VA 0x%08x not in PF and not stack page", va);
+    }
+    
+    env_page_ws_set_entry(curenv, target_idx, va);
+    curenv->page_WS_last_index = (target_idx + 1) % ws_max;
 }
