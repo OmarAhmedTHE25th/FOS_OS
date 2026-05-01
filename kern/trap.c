@@ -475,7 +475,7 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
         uint32 found = 0;
         for (uint32 i = 0; i < ws_max; i++)
         {
-            uint32 idx = (curenv->page_WS_last_index + i) % ws_max;
+            uint32 idx = (curenv->page_last_WS_index + i) % ws_max;
             if (env_page_ws_is_entry_empty(curenv, idx))
             {
                 target_idx = idx;
@@ -509,7 +509,11 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
         else
             panic("page_fault_handler: VA 0x%08x not in PF and not stack page", va);
     }
+	else if (read_ret != 0)  
+    {  
+        panic("page_fault_handler: disk read error %d for va %08x", read_ret, va);  
+    }  
     
     env_page_ws_set_entry(curenv, target_idx, va);
-    curenv->page_WS_last_index = (target_idx + 1) % ws_max;
+    curenv->page_last_WS_index = (target_idx + 1) % ws_max;
 }
