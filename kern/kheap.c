@@ -4,7 +4,7 @@
 
 //2022: NOTE: All kernel heap allocations are multiples of PAGE_SIZE (4KB)
 
-// Keeping a “moving pointer” for next-fit strategy (not the best approach, but works fine in practice)
+// Keeping a moving pointer for next-fit strategy (first thing that came to my mind)
 uint32 next_fit_cursor = KERNEL_HEAP_START;
 
 // Calculation: (0xFFFFF000 - 0xF6000000) / 4096
@@ -22,51 +22,48 @@ uint32 num_pages = size / PAGE_SIZE;
 
 if (isKHeapPlacementStrategyNEXTFIT())
 {
-    uint32 start_scan = next_fit_cursor;
-    uint32 cur = start_scan;
+    uint32 search_start = next_fit_cursor;
+    uint32 current_virtual_address = search_start;
 
-    uint32 found_count = 0;
-    bool wrapped_once = 0;
+    uint32 free_pages_found = 0;
+    bool has_wrapped = 0;
 
-    uint32 candidate_end = 0; // just keeping this for clarity while scanning
 
-    while (found_count < num_pages)
+    while (free_pages_found < num_pages)
     {
-        if (cur >= KERNEL_HEAP_MAX)
+        if (current_virtual_address >= KERNEL_HEAP_MAX)
         {
-            if (wrapped_once)
-                return NULL; // full circle, nothing available
-
-            wrapped_once = 1;
-            cur = KERNEL_HEAP_START;
-            found_count = 0;
+            if (has_wrapped)
+                return NULL;
+            // Get some more ram
+            has_wrapped = 1;
+            current_virtual_address = KERNEL_HEAP_START;
+            free_pages_found = 0;
         }
 
-        // if we wrapped and somehow passed start again, give up
-        if (wrapped_once && (cur + PAGE_SIZE > start_scan))
+        // if we wrapped and somehow passed start again, give up (preventing infinite loops is my middle name)
+        if (has_wrapped && (current_virtual_address + PAGE_SIZE > search_start))
             return NULL;
 
-        struct Frame_Info *fi = NULL;
-        uint32 *pt = NULL;
+        struct Frame_Info *frame_info = NULL;
+        uint32 *page_table = NULL;
 
-        fi = get_frame_info(ptr_page_directory, (void*)cur, &pt);
+        frame_info = get_frame_info(ptr_page_directory, (void*)current_virtual_address, &page_table);
 
-        if (fi == NULL)
+        if (frame_info == NULL) // Home sweet home
         {
-            found_count++;
-            if (found_count == num_pages)
-                candidate_end = cur + PAGE_SIZE;
+            free_pages_found++;
         }
         else
         {
             // hit an occupied page -> restart counting
-            found_count = 0;
+            free_pages_found = 0;
         }
 
-        cur += PAGE_SIZE;
+        current_virtual_address += PAGE_SIZE;
     }
 
-    uint32 alloc_start = cur - size;
+    uint32 alloc_start = current_virtual_address - size;
 
     // allocate pages
     uint32 va = alloc_start;
@@ -83,7 +80,7 @@ if (isKHeapPlacementStrategyNEXTFIT())
         va += PAGE_SIZE;
     }
 
-    next_fit_cursor = cur;
+    next_fit_cursor = current_virtual_address;
 
     uint32 idx = (alloc_start - KERNEL_HEAP_START) / PAGE_SIZE;
     kheap_size_tracker[idx] = num_pages;
@@ -95,27 +92,27 @@ else if (isKHeapPlacementStrategyBESTFIT())
     uint32 best_start = 0;
     uint32 best_size = 0xFFFFFFFF;
 
-    uint32 cur = KERNEL_HEAP_START;
-    uint32 count = 0;
+    uint32 current_virtual_adress = KERNEL_HEAP_START;
+    uint32 free_pages_count = 0;
     uint32 block_start = 0;
 
-    while (cur < KERNEL_HEAP_MAX)
+    while (current_virtual_adress < KERNEL_HEAP_MAX)
     {
-        struct Frame_Info *fi = NULL;
+        struct Frame_Info *frame_info = NULL;
         uint32 *pt = NULL;
 
-        fi = get_frame_info(ptr_page_directory, (void*)cur, &pt);
+        frame_info = get_frame_info(ptr_page_directory, (void*)current_virtual_adress, &pt);
 
-        if (fi == NULL)
+        if (frame_info == NULL)
         {
-            if (count == 0)
-                block_start = cur;
+            if (free_pages_count == 0)
+                block_start = current_virtual_adress;
 
-            count++;
+            free_pages_count++;
         }
         else
         {
-            uint32 hole_size = count * PAGE_SIZE;
+            uint32 hole_size = free_pages_count * PAGE_SIZE;
 
             if (hole_size >= size && hole_size < best_size)
             {
@@ -123,16 +120,16 @@ else if (isKHeapPlacementStrategyBESTFIT())
                 best_start = block_start;
             }
 
-            count = 0;
+            free_pages_count = 0;
         }
 
-        cur += PAGE_SIZE;
+        current_virtual_adress += PAGE_SIZE;
     }
 
     // last hole check (I always forget this edge case if I don't comment it)
-    if (count > 0)
+    if (free_pages_count > 0)
     {
-        uint32 hole_size = count * PAGE_SIZE;
+        uint32 hole_size = free_pages_count * PAGE_SIZE;
         if (hole_size >= size && hole_size < best_size)
         {
             best_size = hole_size;
@@ -143,14 +140,14 @@ else if (isKHeapPlacementStrategyBESTFIT())
     if (best_size == 0xFFFFFFFF)
         return NULL;
 
-    for (uint32 va = best_start; va < best_start + size; va += PAGE_SIZE)
+    for (uint32 virtual_address = best_start; virtual_address < best_start + size; virtual_address += PAGE_SIZE)
     {
-        struct Frame_Info *fi = NULL;
-        allocate_frame(&fi);
+        struct Frame_Info *frame_info = NULL;
+        allocate_frame(&frame_info);
 
         map_frame(ptr_page_directory,
-                  fi,
-                  (void*)va,
+                  frame_info,
+                  (void*)virtual_address,
                   PERM_PRESENT | PERM_WRITEABLE);
     }
 
@@ -182,7 +179,7 @@ if (pages == 0)
 
 uint32 va = (uint32)virtual_address;
 
-// unmap pages one by one (not the fastest, but straightforward)
+// unmap pages one by one
 for (uint32 i = 0; i < pages; i++)
 {
     unmap_frame(ptr_page_directory, (void*)va);
