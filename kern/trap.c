@@ -459,17 +459,16 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
 {
     uint32 va = ROUNDDOWN(fault_va, PAGE_SIZE);
     uint32 ws_max = curenv->page_WS_max_size;
-    
+
     // Protection fault check
     if ((pt_get_page_permissions(curenv, va) & PERM_PRESENT) == PERM_PRESENT)
     {
-        panic("page_fault_handler: protection fault at va %08x in env %s", 
-              va, curenv->prog_name);
+        panic("page_fault_handler: protection fault at va %08x in env %s", va, curenv->prog_name);
     }
-    
+
     uint32 ws_size = env_page_ws_get_size(curenv);
     uint32 target_idx = 0;
-    
+
     if (ws_size < ws_max)
     {
         uint32 found = 0;
@@ -483,86 +482,77 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
                 break;
             }
         }
-        if (!found)
-            panic("page_fault_handler: WS has space but no empty entry");
+        if (!found) panic("page_fault_handler: WS has space but no empty entry");
+
+        // Update hand for next fault
+        curenv->page_last_WS_index = (target_idx + 1) % ws_max;
     }
     else
     {
-        // Implement Nth chance CLOCK algorithm to find victim
-        if (isPageReplacmentAlgorithmNchanceCLOCK())
-        {
-            while (1)
-            {
-                uint32 idx = curenv->page_last_WS_index;
-                uint32 va_to_check = env_page_ws_get_virtual_address(curenv, idx);
-                uint32 permissions = pt_get_page_permissions(curenv, va_to_check);
+    	// Implement Nth chance CLOCK algorithm to find victim
+    	        if (isPageReplacmentAlgorithmNchanceCLOCK())
+    	        {
+    	            while (1)
+    	            {
+    	                uint32 idx = curenv->page_last_WS_index;
+    	                uint32 va_to_check = env_page_ws_get_virtual_address(curenv, idx);
+    	                uint32 permissions = pt_get_page_permissions(curenv, va_to_check);
 
-                if (permissions & PERM_USED)
-                {
-                    pt_set_page_permissions(curenv, va_to_check, 0, PERM_USED);
-                    curenv->ptr_pageWorkingSet[idx].sweeps_counter = 0;
-                }
-                else
-                {
-                    curenv->ptr_pageWorkingSet[idx].sweeps_counter++;
-                    if (curenv->ptr_pageWorkingSet[idx].sweeps_counter >= page_WS_max_sweeps)
-                    {
-                        // Victim found
-                        target_idx = idx;
+    	                if (permissions & PERM_USED)
+    	                {
+    	                    // Page was used: give it a second chance by clearing the bit and resetting counter
+    	                    pt_set_page_permissions(curenv, va_to_check, 0, PERM_USED);
+    	                    curenv->ptr_pageWorkingSet[idx].sweeps_counter = 0;
+    	                }
+    	                else
+    	                {
+    	                    // Page not used: increment its sweep counter
+    	                    curenv->ptr_pageWorkingSet[idx].sweeps_counter++;
 
-                        // If modified, write to disk
-                        if (permissions & PERM_MODIFIED)
-                        {
-                            struct Frame_Info *fi = get_frame_info(curenv->env_page_directory, (void *)va_to_check, NULL);
-                            pf_update_env_page(curenv, (void *)va_to_check, fi);
-                        }
+    	                    if (curenv->ptr_pageWorkingSet[idx].sweeps_counter >= page_WS_max_sweeps)
+    	                    {
+    	                        // Victim found! Set target_idx FIRST
+    	                        target_idx = idx;
 
-                        // Unmap the victim
-                        unmap_frame(curenv->env_page_directory, (void *)va_to_check);
-                        env_page_ws_clear_entry(curenv, target_idx);
-                        
-                        // Set target_idx and update last index for the new page placement
-                        target_idx = idx;
-                        curenv->page_last_WS_index = (target_idx + 1) % ws_max;
-                        break;
-                    }
-                }
-                curenv->page_last_WS_index = (curenv->page_last_WS_index + 1) % ws_max;
-            }
-        }
-        else
-        {
-            panic("page_fault_handler: WS is full, replacement algorithm not implemented yet");
-        }
+    	                        // If modified, write to disk
+    	                        if (permissions & PERM_MODIFIED)
+    	                        {
+    	                            uint32 *ptr_page_table = NULL;
+    	                            struct Frame_Info *fi = get_frame_info(curenv->env_page_directory, (void *)va_to_check, &ptr_page_table);
+    	                            pf_update_env_page(curenv, (void *)va_to_check, fi);
+    	                        }
+
+    	                        // Unmap and clear the CORRECT target_idx
+    	                        unmap_frame(curenv->env_page_directory, (void *)va_to_check);
+    	                        env_page_ws_clear_entry(curenv, target_idx);
+
+    	                        // Move the clock hand to the next position after the victim
+    	                        curenv->page_last_WS_index = (target_idx + 1) % ws_max;
+    	                        break;
+    	                    }
+    	                }
+
+    	                // If not a victim, move hand to the next page for evaluation
+    	                curenv->page_last_WS_index = (curenv->page_last_WS_index + 1) % ws_max;
+    	            }
+    	        }
     }
-    
+
+    // Allocate and Map new frame
     struct Frame_Info *new_frame = NULL;
     if (allocate_frame(&new_frame) == E_NO_MEM)
-        panic("page_fault_handler: no free frames (env %08x, va %08x)",
-              curenv->env_id, va);
-    
-    map_frame(curenv->env_page_directory, new_frame,
-              (void *)va,
-              PERM_PRESENT | PERM_USER | PERM_WRITEABLE);
-    
+        panic("page_fault_handler: no free frames");
+
+    map_frame(curenv->env_page_directory, new_frame, (void *)va, PERM_PRESENT | PERM_USER | PERM_WRITEABLE);
+
     int read_ret = pf_read_env_page(curenv, (void *)va);
     if (read_ret == E_PAGE_NOT_EXIST_IN_PF)
     {
-        if (va >= USTACKBOTTOM && va < USTACKTOP)
-            pf_add_empty_env_page(curenv, va, 1);
-        else
-            panic("page_fault_handler: VA 0x%08x not in PF and not stack page", va);
+        if (va >= USTACKBOTTOM && va < USTACKTOP) pf_add_empty_env_page(curenv, va, 1);
+        else panic("page_fault_handler: VA 0x%08x not in PF", va);
     }
-	else if (read_ret != 0)  
-    {  
-        panic("page_fault_handler: disk read error %d for va %08x", read_ret, va);  
-    }  
-    
+
+    // Set entry and reset counter for the new page
     env_page_ws_set_entry(curenv, target_idx, va);
-    // curenv->page_last_WS_index is already updated above if replacement occurred, 
-    // OR it should be updated if it was an empty slot.
-    if (ws_size < ws_max)
-    {
-        curenv->page_last_WS_index = (target_idx + 1) % ws_max;
-    }
+    curenv->ptr_pageWorkingSet[target_idx].sweeps_counter = 0;
 }
