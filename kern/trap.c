@@ -488,9 +488,53 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
     }
     else
     {
-        // TODO: Implement Nth chance CLOCK algorithm to find victim
-		panic("page_fault_handler: WS is full, replacement algorithm not implemented yet");
-	}
+        // Implement Nth chance CLOCK algorithm to find victim
+        if (isPageReplacmentAlgorithmNchanceCLOCK())
+        {
+            while (1)
+            {
+                uint32 idx = curenv->page_last_WS_index;
+                uint32 va_to_check = env_page_ws_get_virtual_address(curenv, idx);
+                uint32 permissions = pt_get_page_permissions(curenv, va_to_check);
+
+                if (permissions & PERM_USED)
+                {
+                    pt_set_page_permissions(curenv, va_to_check, 0, PERM_USED);
+                    curenv->ptr_pageWorkingSet[idx].sweeps_counter = 0;
+                }
+                else
+                {
+                    curenv->ptr_pageWorkingSet[idx].sweeps_counter++;
+                    if (curenv->ptr_pageWorkingSet[idx].sweeps_counter >= page_WS_max_sweeps)
+                    {
+                        // Victim found
+                        target_idx = idx;
+
+                        // If modified, write to disk
+                        if (permissions & PERM_MODIFIED)
+                        {
+                            struct Frame_Info *fi = get_frame_info(curenv->env_page_directory, (void *)va_to_check, NULL);
+                            pf_update_env_page(curenv, (void *)va_to_check, fi);
+                        }
+
+                        // Unmap the victim
+                        unmap_frame(curenv->env_page_directory, (void *)va_to_check);
+                        env_page_ws_clear_entry(curenv, target_idx);
+                        
+                        // Set target_idx and update last index for the new page placement
+                        target_idx = idx;
+                        curenv->page_last_WS_index = (target_idx + 1) % ws_max;
+                        break;
+                    }
+                }
+                curenv->page_last_WS_index = (curenv->page_last_WS_index + 1) % ws_max;
+            }
+        }
+        else
+        {
+            panic("page_fault_handler: WS is full, replacement algorithm not implemented yet");
+        }
+    }
     
     struct Frame_Info *new_frame = NULL;
     if (allocate_frame(&new_frame) == E_NO_MEM)
@@ -515,5 +559,10 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
     }  
     
     env_page_ws_set_entry(curenv, target_idx, va);
-    curenv->page_last_WS_index = (target_idx + 1) % ws_max;
+    // curenv->page_last_WS_index is already updated above if replacement occurred, 
+    // OR it should be updated if it was an empty slot.
+    if (ws_size < ws_max)
+    {
+        curenv->page_last_WS_index = (target_idx + 1) % ws_max;
+    }
 }
