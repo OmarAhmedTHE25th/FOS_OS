@@ -697,6 +697,7 @@ void env_free(struct Env *e)
 	{
 		if (e->env_page_directory[i] & PERM_PRESENT)
 		{
+			//since the IDE had weird compiler issues with PTE_ADDR, this achieves the same result as it masks the bottom 12 bits tahat are flag bits.
 			uint32 pt_pa = e->env_page_directory[i] & 0xFFFFF000;
 			struct Frame_Info *pt_frame = to_frame_info(pt_pa);
 			free_frame(pt_frame);
