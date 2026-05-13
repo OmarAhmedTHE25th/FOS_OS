@@ -37,7 +37,7 @@ if (isKHeapPlacementStrategyNEXTFIT())
             current_virtual_address = KERNEL_HEAP_START;
             free_pages_found = 0;
         }
-
+// if we checked the entire heap and we found no suitable spot and we are about to start searching again , we stop the searcg to prevent an infinite loop
         if (has_wrapped && (current_virtual_address + PAGE_SIZE > search_start))
             return NULL;
 

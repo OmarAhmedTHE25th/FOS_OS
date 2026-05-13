@@ -20,6 +20,9 @@
 extern int pf_add_env_page(struct Env* ptr_env, uint32 virtual_address, void* ptrDataSrc);
 extern int loadtime_map_frame(uint32 *ptr_page_directory, struct Frame_Info *ptr_frame_info, void *virtual_address, int perm);
 extern void addTableToTableWorkingSet(struct Env *e, uint32 tableAddress);
+void complete_environment_initialization(struct Env* e);
+void set_environment_entry_point(struct Env* e, uint8* ptr_program_start);
+void * create_user_page_WS(unsigned int numOfElements);
 
 struct Env* envs = NULL;		// All environments
 struct Env* curenv = NULL;	        // The current env
@@ -178,6 +181,119 @@ void free_environment(struct Env* e)
 	e->env_status = ENV_FREE;
 	LIST_INSERT_HEAD(&env_free_list, e);
 }
+static void resize_page_WS(struct Env* e, uint32 new_size, int remove_excess_pages)
+{
+	if (e == NULL || new_size == 0 || new_size == e->page_WS_max_size)
+		return;
+
+	uint32 old_size = e->page_WS_max_size;
+	struct WorkingSetElement* old_ws = e->ptr_pageWorkingSet;
+	struct WorkingSetElement* new_ws = create_user_page_WS(new_size);
+
+	if (new_ws == NULL)
+		panic("resize_page_WS: failed to allocate new page working set");
+
+	for (uint32 i = 0; i < new_size; i++)
+	{
+		new_ws[i].virtual_address = 0;
+		new_ws[i].empty = 1;
+		new_ws[i].time_stamp = 0;
+		new_ws[i].sweeps_counter = 0;
+	}
+
+	if (new_size > old_size)
+	{
+		for (uint32 i = 0; i < old_size; i++)
+			new_ws[i] = old_ws[i];
+	}
+	else if (remove_excess_pages)
+	{
+		uint32 used_pages = 0;
+		for (uint32 i = 0; i < old_size; i++)
+		{
+			if (old_ws[i].empty == 0)
+				used_pages++;
+		}
+
+		uint32 pages_to_skip = (used_pages > new_size) ? used_pages - new_size : 0;
+		uint32 skipped_pages = 0;
+		uint32 new_index = 0;
+
+		for (uint32 i = 0; i < old_size; i++)
+		{
+			if (old_ws[i].empty == 0)
+			{
+				if (skipped_pages < pages_to_skip)
+				{
+					unmap_frame(e->env_page_directory, (void*)old_ws[i].virtual_address);
+					skipped_pages++;
+					continue;
+				}
+
+				if (new_index < new_size)
+					new_ws[new_index++] = old_ws[i];
+				else
+					unmap_frame(e->env_page_directory, (void*)old_ws[i].virtual_address);
+			}
+		}
+	}
+	else
+	{
+		for (uint32 i = 0; i < new_size; i++)
+			new_ws[i] = old_ws[i];
+	}
+
+	kfree(old_ws);
+
+	e->ptr_pageWorkingSet = new_ws;
+	e->page_WS_max_size = new_size;
+	e->page_last_WS_index = 0;
+
+	for (uint32 i = 0; i < new_size; i++)
+	{
+		if (e->ptr_pageWorkingSet[i].empty)
+		{
+			e->page_last_WS_index = i;
+			break;
+		}
+		else
+		{
+			e->page_last_WS_index = (i + 1) % new_size;
+		}
+	}
+}
+
+void double_WS_Size(struct Env* e, int isOneTimeOnly)
+{
+	if (e == NULL)
+		return;
+
+	if (isOneTimeOnly && e->isExpandedBefore)
+		return;
+
+	if (env_page_ws_get_size(e) != e->page_WS_max_size)
+		return;
+
+	resize_page_WS(e, e->page_WS_max_size * 2, 0);
+
+	if (isOneTimeOnly)
+		e->isExpandedBefore = 1;
+}
+
+void half_WS_Size(struct Env* e, int isImmidiate)
+{
+	if (e == NULL || e->page_WS_max_size <= 1)
+		return;
+
+	uint32 new_size = e->page_WS_max_size / 2;
+	if (new_size == 0)
+		new_size = 1;
+
+	if (!isImmidiate && env_page_ws_get_size(e) > new_size)
+		return;
+
+	resize_page_WS(e, new_size, isImmidiate);
+}
 
 
 void * create_user_page_WS(unsigned int numOfElements)
@@ -294,6 +410,7 @@ void initialize_environment(struct Env* e, uint32* ptr_user_page_directory
 	e->nClocks = 0;
 	//e->shared_free_address = USER_SHARED_MEM_START;
 	e->priority = PRIORITY_NORMAL;
+	e->isExpandedBefore = 0;
 	//Completes other environment initializations, (envID, status and most of registers)
 	complete_environment_initialization(e);
 }
