@@ -275,7 +275,8 @@ void double_WS_Size(struct Env* e, int isOneTimeOnly)
 	if (env_page_ws_get_size(e) != e->page_WS_max_size)
 		return;
 
-	resize_page_WS(e, e->page_WS_max_size * 2, 0);
+	uint32 double_old_size = e->page_WS_max_size * 2;
+	resize_page_WS(e, double_old_size, 0);
 
 	if (isOneTimeOnly)
 		e->isExpandedBefore = 1;

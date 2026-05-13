@@ -161,7 +161,7 @@ void kfree(void* virtual_address)
 if ((uint32)virtual_address < KERNEL_HEAP_START ||
 (uint32)virtual_address >= KERNEL_HEAP_MAX)
 {
-panic("kfree: invalid address (out of heap range)");
+panic("invalid address (out of heap range)");
 }
 
 

@@ -118,7 +118,6 @@ void sched_init_MLFQ(uint8 numOfLevels, uint8 *quantumOfEachLevel)
 
 struct Env* fos_scheduler_MLFQ()
 {
-    // Remember which level the current env was picked from last time,so we can demote it by one level on the next call.
     static int curenv_level = 0;
 
 	//[1] If the current environment (curenv) exists, place it in the suitable queue
@@ -143,7 +142,7 @@ struct Env* fos_scheduler_MLFQ()
         }
     }
 
-    //Else, no env found
+
     return NULL;
 }
 
@@ -162,28 +161,19 @@ void fos_scheduler(void)
 	chk1();
 	scheduler_status = SCH_STARTED;
 
-	//This variable should be set to the next environment to be run (if any)
 	struct Env* next_env = NULL;
 
 	if (scheduler_method == SCH_RR)
 	{
-		// Implement simple round-robin scheduling.
-		// Pick next environment from the ready queue,
-		// and switch to such environment if found.
-		// It's OK to choose the previously running env if no other env
-		// is runnable.
 
-		//If the curenv is still exist, then insert it again in the ready queue
 		if (curenv != NULL)
 		{
 			enqueue(&(env_ready_queues[0]), curenv);
 		}
 
-		//Pick the next environment from the ready queue
 		next_env = dequeue(&(env_ready_queues[0]));
 
-		//Reset the quantum
-		//Reset the value of CNT0 for the next clock interval
+
 		kclock_set_quantum(quantums[0]);
 
 	}
@@ -193,14 +183,11 @@ void fos_scheduler(void)
 	}
 
 
-	//temporarily set the curenv by the next env JUST for checking the scheduler
-	//Then: reset it again
-	struct Env* old_curenv = curenv;
+		struct Env* old_curenv = curenv;
 	curenv = next_env ;
 	chk2(next_env);
 	curenv = old_curenv;
 
-	//cprintf("Scheduler select program '%s'\n", next_env->prog_name);
 	if(next_env != NULL)
 	{
 		env_run(next_env);
@@ -208,13 +195,10 @@ void fos_scheduler(void)
 	else
 	{
 		curenv = NULL;
-		//lcr3(K_PHYSICAL_ADDRESS(ptr_page_directory));
 		lcr3(phys_page_directory);
 
-		//cprintf("SP = %x\n", read_esp());
 
 		scheduler_status = SCH_STOPPED;
-		//cprintf("[sched] no envs - nothing more to do!\n");
 		while (1)
 			run_command_prompt(NULL);
 
