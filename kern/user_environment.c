@@ -181,7 +181,7 @@ void free_environment(struct Env* e)
 	e->env_status = ENV_FREE;
 	LIST_INSERT_HEAD(&env_free_list, e);
 }
-static void resize_page_WS(struct Env* e, uint32 new_size, int remove_excess_pages)
+static void resize_page_WS(struct Env* e, uint32 new_size, int res)//res = remove extra pages
 {
 	if (e == NULL || new_size == 0 || new_size == e->page_WS_max_size)
 		return;
@@ -200,13 +200,14 @@ static void resize_page_WS(struct Env* e, uint32 new_size, int remove_excess_pag
 		new_ws[i].time_stamp = 0;
 		new_ws[i].sweeps_counter = 0;
 	}
-
+// simply copy the the old pages of the current WS into the new array
 	if (new_size > old_size)
 	{
 		for (uint32 i = 0; i < old_size; i++)
 			new_ws[i] = old_ws[i];
 	}
-	else if (remove_excess_pages)
+	// when the new size is < than the number of pages currently in us, we calculate how many pages need to be evicted then we remove them by calling unmap_frame
+	else if (res)
 	{
 		uint32 used_pages = 0;
 		for (uint32 i = 0; i < old_size; i++)
