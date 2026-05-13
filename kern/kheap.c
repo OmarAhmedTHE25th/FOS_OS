@@ -37,7 +37,8 @@ if (isKHeapPlacementStrategyNEXTFIT())
             current_virtual_address = KERNEL_HEAP_START;
             free_pages_found = 0;
         }
-
+        // if we checked the entire heap and found nothing and we are about to start searching again
+        // wa2af search so we don't enter an infinite loop
         if (has_wrapped && (current_virtual_address + PAGE_SIZE > search_start))
             return NULL;
 

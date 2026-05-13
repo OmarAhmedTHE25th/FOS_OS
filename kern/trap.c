@@ -463,7 +463,7 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
 
     if ((pt_get_page_permissions(curenv, va) & PERM_PRESENT) == PERM_PRESENT)
     {
-        panic("page_fault_handler: protection fault at va %08x in env %s", va, curenv->prog_name);
+        panic(" fault at va %08x in env %s", va, curenv->prog_name);
     }
 
     uint32 ws_size = env_page_ws_get_size(curenv);
@@ -482,7 +482,14 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
                 break;
             }
         }
+<<<<<<< main
         if (!found) panic("page_fault_handler: WS has space but no empty entry");
+=======
+        if (!found) panic("WS has space but no empty entry");
+
+
+        curenv->page_last_WS_index = (target_idx + 1) % ws_max;
+>>>>>>> main
     }
     else
         {
@@ -530,6 +537,7 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
     // map and allocate frame
     struct Frame_Info *new_frame = NULL;
     if (allocate_frame(&new_frame) == E_NO_MEM)
+<<<<<<< main
         panic("page_fault_handler: no free frames (env %08x, va %08x)",
               curenv->env_id, va);
     
@@ -544,6 +552,17 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
             pf_add_empty_env_page(curenv, va, 1);
         else
             panic("page_fault_handler: VA 0x%08x not in PF and not stack page", va);
+=======
+        panic("no free frames");
+
+    map_frame(curenv->env_page_directory, new_frame, (void *)va, PERM_PRESENT | PERM_USER | PERM_WRITEABLE);
+
+    int read_ret = pf_read_env_page(curenv, (void *)va);
+    if (read_ret == E_PAGE_NOT_EXIST_IN_PF)
+    {
+        if (va >= USTACKBOTTOM && va < USTACKTOP) pf_add_empty_env_page(curenv, va, 1);
+        else panic("VA 0x%08x not in PF", va);
+>>>>>>> main
     }
 	else if (read_ret != 0)  
         panic("page_fault_handler: disk read error %d for va %08x", read_ret, va);  
