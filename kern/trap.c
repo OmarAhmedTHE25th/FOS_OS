@@ -482,68 +482,77 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
                 break;
             }
         }
+<<<<<<< main
+        if (!found) panic("page_fault_handler: WS has space but no empty entry");
+=======
         if (!found) panic("WS has space but no empty entry");
 
 
         curenv->page_last_WS_index = (target_idx + 1) % ws_max;
+>>>>>>> main
     }
     else
         {
     	if (isPageReplacmentAlgorithmNchanceCLOCK())
-    	        {
-    	            uint32 victim_idx = -1;
+			{
+				uint32 victim_idx = -1;
 
-    	            while (victim_idx == -1)
-    	            {
-    	                for (uint32 i = 0; i < ws_max; i++)
-    	                {
-    	                    uint32 va_to_check = env_page_ws_get_virtual_address(curenv, i);
-    	                    uint32 permissions = pt_get_page_permissions(curenv, va_to_check);
+				while (victim_idx == -1)
+					for (uint32 i = 0; i < ws_max; i++)
+					{
+						uint32 va_to_check = env_page_ws_get_virtual_address(curenv, i);
+						uint32 permissions = pt_get_page_permissions(curenv, va_to_check);
 
-    	                    if (permissions & PERM_USED)
-    	                    {
-    	                        pt_set_page_permissions(curenv, va_to_check, 0, PERM_USED);
-    	                        curenv->ptr_pageWorkingSet[i].sweeps_counter = 0;
-    	                    }
-    	                    else
-    	                    {
-    	                        curenv->ptr_pageWorkingSet[i].sweeps_counter++;
+						if (permissions & PERM_USED)
+						{
+							pt_set_page_permissions(curenv, va_to_check, 0, PERM_USED);
+							curenv->ptr_pageWorkingSet[i].sweeps_counter = 0;
+						}
+						else
+						{
+							curenv->ptr_pageWorkingSet[i].sweeps_counter++;
 
+							if (curenv->ptr_pageWorkingSet[i].sweeps_counter >= page_WS_max_sweeps)
+								if (victim_idx == -1)
+									victim_idx = i;
+						}
+					}
 
-    	                        if (curenv->ptr_pageWorkingSet[i].sweeps_counter >= page_WS_max_sweeps)
-    	                        {
-    	                            if (victim_idx == -1)
-    	                            {
-    	                                victim_idx = i;
-    	                            }
-    	                        }
-    	                    }
-    	                }
-    	            }
+				target_idx = victim_idx;
 
+				uint32 victim_va = env_page_ws_get_virtual_address(curenv, target_idx);
+				uint32 victim_perm = pt_get_page_permissions(curenv, victim_va);
 
-    	            target_idx = victim_idx;
-    	            uint32 victim_va = env_page_ws_get_virtual_address(curenv, target_idx);
-    	            uint32 victim_perm = pt_get_page_permissions(curenv, victim_va);
-
-    	            if (victim_perm & PERM_MODIFIED)
-    	            {
-    	                uint32 *ptr_page_table = NULL;
-    	                struct Frame_Info *fi = get_frame_info(curenv->env_page_directory, (void*)victim_va, &ptr_page_table);
-    	                pf_update_env_page(curenv, (void*)victim_va, fi);
-    	            }
-
-    	            unmap_frame(curenv->env_page_directory, (void*)victim_va);
-    	            env_page_ws_clear_entry(curenv, target_idx);
-
-
-    	            curenv->page_last_WS_index = (target_idx + 1) % ws_max;
-    	        }
+				if (victim_perm & PERM_MODIFIED)
+				{
+					uint32 *ptr_page_table = NULL;
+					struct Frame_Info *fi = get_frame_info(curenv->env_page_directory, (void*)victim_va, &ptr_page_table);
+					pf_update_env_page(curenv, (void*)victim_va, fi);
+				}
+				unmap_frame(curenv->env_page_directory, (void*)victim_va);
+				env_page_ws_clear_entry(curenv, target_idx);
+			}
         }
 
-    // Allocate and Map new frame
+    // map and allocate frame
     struct Frame_Info *new_frame = NULL;
     if (allocate_frame(&new_frame) == E_NO_MEM)
+<<<<<<< main
+        panic("page_fault_handler: no free frames (env %08x, va %08x)",
+              curenv->env_id, va);
+    
+    map_frame(curenv->env_page_directory, new_frame,
+              (void *)va,
+              PERM_PRESENT | PERM_USER | PERM_WRITEABLE);
+    
+    int read_ret = pf_read_env_page(curenv, (void *)va);
+    if (read_ret == E_PAGE_NOT_EXIST_IN_PF)
+    {
+        if (va >= USTACKBOTTOM && va < USTACKTOP)
+            pf_add_empty_env_page(curenv, va, 1);
+        else
+            panic("page_fault_handler: VA 0x%08x not in PF and not stack page", va);
+=======
         panic("no free frames");
 
     map_frame(curenv->env_page_directory, new_frame, (void *)va, PERM_PRESENT | PERM_USER | PERM_WRITEABLE);
@@ -553,9 +562,12 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
     {
         if (va >= USTACKBOTTOM && va < USTACKTOP) pf_add_empty_env_page(curenv, va, 1);
         else panic("VA 0x%08x not in PF", va);
+>>>>>>> main
     }
-
-    // Set entry and reset counter for the new page
+	else if (read_ret != 0)  
+        panic("page_fault_handler: disk read error %d for va %08x", read_ret, va);  
+    
     env_page_ws_set_entry(curenv, target_idx, va);
-    curenv->ptr_pageWorkingSet[target_idx].sweeps_counter = 0;
+	curenv->ptr_pageWorkingSet[target_idx].sweeps_counter = 0;
+    curenv->page_last_WS_index = (target_idx + 1) % ws_max;
 }
