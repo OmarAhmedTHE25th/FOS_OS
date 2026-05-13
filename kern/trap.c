@@ -460,7 +460,7 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
     uint32 va = ROUNDDOWN(fault_va, PAGE_SIZE);
     uint32 ws_max = curenv->page_WS_max_size;
 
-    // Protection fault check
+
     if ((pt_get_page_permissions(curenv, va) & PERM_PRESENT) == PERM_PRESENT)
     {
         panic("page_fault_handler: protection fault at va %08x in env %s", va, curenv->prog_name);
@@ -484,59 +484,62 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
         }
         if (!found) panic("page_fault_handler: WS has space but no empty entry");
 
-        // Update hand for next fault
+
         curenv->page_last_WS_index = (target_idx + 1) % ws_max;
     }
     else
-    {
-    	// Implement Nth chance CLOCK algorithm to find victim
-    	        if (isPageReplacmentAlgorithmNchanceCLOCK())
+        {
+    	if (isPageReplacmentAlgorithmNchanceCLOCK())
     	        {
-    	            while (1)
+    	            uint32 victim_idx = -1;
+
+    	            while (victim_idx == -1)
     	            {
-    	                uint32 idx = curenv->page_last_WS_index;
-    	                uint32 va_to_check = env_page_ws_get_virtual_address(curenv, idx);
-    	                uint32 permissions = pt_get_page_permissions(curenv, va_to_check);
-
-    	                if (permissions & PERM_USED)
+    	                for (uint32 i = 0; i < ws_max; i++)
     	                {
-    	                    // Page was used: give it a second chance by clearing the bit and resetting counter
-    	                    pt_set_page_permissions(curenv, va_to_check, 0, PERM_USED);
-    	                    curenv->ptr_pageWorkingSet[idx].sweeps_counter = 0;
-    	                }
-    	                else
-    	                {
-    	                    // Page not used: increment its sweep counter
-    	                    curenv->ptr_pageWorkingSet[idx].sweeps_counter++;
+    	                    uint32 va_to_check = env_page_ws_get_virtual_address(curenv, i);
+    	                    uint32 permissions = pt_get_page_permissions(curenv, va_to_check);
 
-    	                    if (curenv->ptr_pageWorkingSet[idx].sweeps_counter >= page_WS_max_sweeps)
+    	                    if (permissions & PERM_USED)
     	                    {
-    	                        // Victim found! Set target_idx FIRST
-    	                        target_idx = idx;
+    	                        pt_set_page_permissions(curenv, va_to_check, 0, PERM_USED);
+    	                        curenv->ptr_pageWorkingSet[i].sweeps_counter = 0;
+    	                    }
+    	                    else
+    	                    {
+    	                        curenv->ptr_pageWorkingSet[i].sweeps_counter++;
 
-    	                        // If modified, write to disk
-    	                        if (permissions & PERM_MODIFIED)
+
+    	                        if (curenv->ptr_pageWorkingSet[i].sweeps_counter >= page_WS_max_sweeps)
     	                        {
-    	                            uint32 *ptr_page_table = NULL;
-    	                            struct Frame_Info *fi = get_frame_info(curenv->env_page_directory, (void *)va_to_check, &ptr_page_table);
-    	                            pf_update_env_page(curenv, (void *)va_to_check, fi);
+    	                            if (victim_idx == -1)
+    	                            {
+    	                                victim_idx = i;
+    	                            }
     	                        }
-
-    	                        // Unmap and clear the CORRECT target_idx
-    	                        unmap_frame(curenv->env_page_directory, (void *)va_to_check);
-    	                        env_page_ws_clear_entry(curenv, target_idx);
-
-    	                        // Move the clock hand to the next position after the victim
-    	                        curenv->page_last_WS_index = (target_idx + 1) % ws_max;
-    	                        break;
     	                    }
     	                }
-
-    	                // If not a victim, move hand to the next page for evaluation
-    	                curenv->page_last_WS_index = (curenv->page_last_WS_index + 1) % ws_max;
     	            }
+
+
+    	            target_idx = victim_idx;
+    	            uint32 victim_va = env_page_ws_get_virtual_address(curenv, target_idx);
+    	            uint32 victim_perm = pt_get_page_permissions(curenv, victim_va);
+
+    	            if (victim_perm & PERM_MODIFIED)
+    	            {
+    	                uint32 *ptr_page_table = NULL;
+    	                struct Frame_Info *fi = get_frame_info(curenv->env_page_directory, (void*)victim_va, &ptr_page_table);
+    	                pf_update_env_page(curenv, (void*)victim_va, fi);
+    	            }
+
+    	            unmap_frame(curenv->env_page_directory, (void*)victim_va);
+    	            env_page_ws_clear_entry(curenv, target_idx);
+
+
+    	            curenv->page_last_WS_index = (target_idx + 1) % ws_max;
     	        }
-    }
+        }
 
     // Allocate and Map new frame
     struct Frame_Info *new_frame = NULL;

@@ -4,13 +4,10 @@
 
 //2022: NOTE: All kernel heap allocations are multiples of PAGE_SIZE (4KB)
 
-// Keeping a moving pointer for next-fit strategy (first thing that came to my mind)
 uint32 next_fit_cursor = KERNEL_HEAP_START;
 
-// Calculation: (0xFFFFF000 - 0xF6000000) / 4096
 #define NUM_KHEAP_PAGES ((KERNEL_HEAP_MAX - KERNEL_HEAP_START) / PAGE_SIZE)
 
-// simple tracker: stores how many pages each allocation occupies (index = base page)
 uint32 kheap_size_tracker[NUM_KHEAP_PAGES];
 
 void* kmalloc(unsigned int size)
@@ -35,13 +32,12 @@ if (isKHeapPlacementStrategyNEXTFIT())
         {
             if (has_wrapped)
                 return NULL;
-            // Get some more ram
+
             has_wrapped = 1;
             current_virtual_address = KERNEL_HEAP_START;
             free_pages_found = 0;
         }
 
-        // if we wrapped and somehow passed start again, give up (preventing infinite loops is my middle name)
         if (has_wrapped && (current_virtual_address + PAGE_SIZE > search_start))
             return NULL;
 
@@ -50,13 +46,12 @@ if (isKHeapPlacementStrategyNEXTFIT())
 
         frame_info = get_frame_info(ptr_page_directory, (void*)current_virtual_address, &page_table);
 
-        if (frame_info == NULL) // Home sweet home
+        if (frame_info == NULL)
         {
             free_pages_found++;
         }
         else
         {
-            // hit an occupied page -> restart counting
             free_pages_found = 0;
         }
 
@@ -65,7 +60,6 @@ if (isKHeapPlacementStrategyNEXTFIT())
 
     uint32 alloc_start = current_virtual_address - size;
 
-    // allocate pages
     uint32 va = alloc_start;
     for (uint32 i = 0; i < num_pages; i++)
     {
@@ -126,7 +120,7 @@ else if (isKHeapPlacementStrategyBESTFIT())
         current_virtual_adress += PAGE_SIZE;
     }
 
-    // last hole check (I always forget this edge case if I don't comment it)
+
     if (free_pages_count > 0)
     {
         uint32 hole_size = free_pages_count * PAGE_SIZE;
@@ -175,18 +169,17 @@ uint32 index = ((uint32)virtual_address - KERNEL_HEAP_START) / PAGE_SIZE;
 uint32 pages = kheap_size_tracker[index];
 
 if (pages == 0)
-    return; // nothing allocated here (silent ignore)
-
+    return;
 uint32 va = (uint32)virtual_address;
 
-// unmap pages one by one
+
 for (uint32 i = 0; i < pages; i++)
 {
     unmap_frame(ptr_page_directory, (void*)va);
     va += PAGE_SIZE;
 }
 
-// mark as free again
+
 kheap_size_tracker[index] = 0;
 
 
