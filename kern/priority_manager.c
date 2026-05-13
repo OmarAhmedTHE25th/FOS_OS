@@ -7,6 +7,33 @@
 void set_program_priority(struct Env* env, int priority)
 {
 
-	panic("This function is not implemented yet\n");
+	if (env == NULL)
+			return;
+
+		assert(priority >= PRIORITY_LOW && priority <= PRIORITY_HIGH);
+
+		env->priority = priority;
+
+		switch (priority)
+		{
+		case PRIORITY_LOW:
+			half_WS_Size(env,0);
+			break;
+
+		case PRIORITY_BELOWNORMAL:
+			half_WS_Size(env, 0);
+			break;
+
+		case PRIORITY_NORMAL:
+			break;
+
+		case PRIORITY_ABOVENORMAL:
+			double_WS_Size(env, 1);
+			break;
+
+		case PRIORITY_HIGH:
+			double_WS_Size(env, 0);
+			break;
+		}
 
 }

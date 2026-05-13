@@ -463,7 +463,7 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
 
     if ((pt_get_page_permissions(curenv, va) & PERM_PRESENT) == PERM_PRESENT)
     {
-        panic("page_fault_handler: protection fault at va %08x in env %s", va, curenv->prog_name);
+        panic(" fault at va %08x in env %s", va, curenv->prog_name);
     }
 
     uint32 ws_size = env_page_ws_get_size(curenv);
@@ -482,7 +482,7 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
                 break;
             }
         }
-        if (!found) panic("page_fault_handler: WS has space but no empty entry");
+        if (!found) panic("WS has space but no empty entry");
 
 
         curenv->page_last_WS_index = (target_idx + 1) % ws_max;
@@ -544,7 +544,7 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
     // Allocate and Map new frame
     struct Frame_Info *new_frame = NULL;
     if (allocate_frame(&new_frame) == E_NO_MEM)
-        panic("page_fault_handler: no free frames");
+        panic("no free frames");
 
     map_frame(curenv->env_page_directory, new_frame, (void *)va, PERM_PRESENT | PERM_USER | PERM_WRITEABLE);
 
@@ -552,7 +552,7 @@ void page_fault_handler(struct Env *curenv, uint32 fault_va)
     if (read_ret == E_PAGE_NOT_EXIST_IN_PF)
     {
         if (va >= USTACKBOTTOM && va < USTACKTOP) pf_add_empty_env_page(curenv, va, 1);
-        else panic("page_fault_handler: VA 0x%08x not in PF", va);
+        else panic("VA 0x%08x not in PF", va);
     }
 
     // Set entry and reset counter for the new page
