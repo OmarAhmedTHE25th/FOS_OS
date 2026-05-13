@@ -678,18 +678,36 @@ void start_env_free(struct Env *e)
 }
 void env_free(struct Env *e)
 {
-
-	//YOUR CODE STARTS HERE, remove the panic and write your code ----
-	panic("env_free() is not implemented yet...!!");
-
 	// [1] Free the pages in the PAGE working set from the main memory
+	for (uint32 i = 0; i < e->page_WS_max_size; i++)
+	{
+		if (!env_page_ws_is_entry_empty(e, i))
+		{
+			uint32 va = env_page_ws_get_virtual_address(e, i);
+			unmap_frame(e->env_page_directory, (void*)va);
+			env_page_ws_clear_entry(e, i);
+		}
+	}
+
 	// [2] Free the PAGE working set array itself from the main memory
+	kfree((void *)e->ptr_pageWorkingSet);
+
 	// [3] Free all TABLES from the main memory
+	for (uint32 i = 0; i < PDX(USER_TOP); i++)
+	{
+		if (e->env_page_directory[i] & PERM_PRESENT)
+		{
+			uint32 pt_pa = e->env_page_directory[i] & 0xFFFFF000;
+			struct Frame_Info *pt_frame = to_frame_info(pt_pa);
+			free_frame(pt_frame);
+
+			e->env_page_directory[i] = 0;
+		}
+	}
+
 	// [4] Free the page DIRECTORY from the main memory
-
-
-
-	//YOUR CODE ENDS HERE --------------------------------------------
+	struct Frame_Info *dir_frame = to_frame_info(e->env_cr3);
+	free_frame(dir_frame);
 
 	//Don't change these lines:
 	pf_free_env(e); /*(ALREADY DONE for you)*/ // (removes all of the program pages from the page file)
